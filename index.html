@@ -28,6 +28,29 @@
             display: block;
         }
 
+        /* CRT Scanline Overlay */
+        #game-container::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.25) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.06),
+                rgba(0, 255, 0, 0.02),
+                rgba(0, 0, 255, 0.06)
+            );
+            background-size: 100% 4px, 3px 100%;
+            z-index: 15;
+            pointer-events: none;
+        }
+
         .ui {
             position: absolute;
             top: 10px;
@@ -121,7 +144,33 @@
         const btnAI = document.getElementById('btn-ai');
 
         let gameActive = false;
-        let gameMode = '2P'; // '2P' or 'AI'
+        let gameMode = '2P';
+
+        // Web Audio API setup
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playBoop(freq, type = 'square', duration = 0.1) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
 
         const ball = {
             x: canvas.width / 2,
@@ -129,7 +178,8 @@
             radius: 8,
             speedX: 5,
             speedY: 5,
-            color: '#00ffff'
+            color: '#00ffff',
+            trail: []
         };
 
         const paddleLeft = {
@@ -166,6 +216,10 @@
         });
 
         function startGame() {
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
             menuOverlay.style.display = 'none';
             gameActive = true;
             paddleLeft.score = 0;
@@ -216,6 +270,45 @@
             ball.y = canvas.height / 2;
             ball.speedX = (Math.random() > 0.5 ? 1 : -1) * 5;
             ball.speedY = (Math.random() > 0.5 ? 1 : -1) * 5;
+            ball.trail = [];
+        }
+
+        function drawGrid() {
+            const time = Date.now() * 0.001;
+            const horizon = canvas.height * 0.6;
+
+            ctx.strokeStyle = '#440066';
+            ctx.lineWidth = 1;
+
+            // Perspective calculation
+            // x_proj = x / (z + constant)
+            // y_proj = y / (z + constant)
+            // For a synthwave look, we can just draw a grid that "moves"
+            // by shifting its origin.
+
+            const gridSpacing = 40;
+            const moveOffset = (time * 50) % gridSpacing;
+
+            // Draw horizontal lines (vanishing into horizon)
+            for (let i = 0; i < 20; i++) {
+                let z = i * 100;
+                let y_pos = horizon + (z * 0.5); // Simplified perspective
+                if (y_pos < canvas.height) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y_pos);
+                    ctx.lineTo(canvas.width, y_pos);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw vertical lines (converging to horizon)
+            for (let i = -10; i < 20; i++) {
+                let x_pos = (i * gridSpacing) - moveOffset;
+                ctx.beginPath();
+                ctx.moveTo(x_pos, canvas.height);
+                ctx.lineTo(canvas.width / 2, horizon);
+                ctx.stroke();
+            }
         }
 
         function update() {
@@ -224,23 +317,32 @@
             ball.x += ball.speedX;
             ball.y += ball.speedY;
 
+            // Trail update
+            ball.trail.push({x: ball.x, y: ball.y});
+            if (ball.trail.length > 15) {
+                ball.trail.shift();
+            }
+
             // Wall collision
             if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
                 ball.speedY = -ball.speedY;
+                playBoop(200, 'square', 0.05);
             }
 
             // Paddle Left collision
             if (ball.x - ball.radius < paddleLeft.x + paddleLeft.width &&
                 ball.y > paddleLeft.y && ball.y < paddleLeft.y + paddleLeft.height) {
                 ball.speedX = -ball.speedX;
-                ball.speedX *= 1.05; // Speed up
+                ball.speedX *= 1.05;
+                playBoop(300, 'square', 0.05);
             }
 
             // Paddle Right collision
             if (ball.x + ball.radius > paddleRight.x &&
                 ball.y > paddleRight.y && ball.y < paddleRight.y + paddleRight.height) {
                 ball.speedX = -ball.speedX;
-                ball.speedX *= 1.05; // Speed up
+                ball.speedX *= 1.05;
+                playBoop(300, 'square', 0.05);
             }
 
             // Score
@@ -266,14 +368,12 @@
                 const aiSpeed = 5;
                 const paddleCenter = paddleRight.y + paddleRight.height / 2;
 
-                // The AI follows the ball's Y position with a bit of "slack"
                 if (paddleCenter < ball.y - 10) {
                     paddleRight.y += aiSpeed;
                 } else if (paddleCenter > ball.y + 10) {
                     paddleRight.y -= aiSpeed;
                 }
 
-                // Boundary check for AI
                 if (paddleRight.y < 0) paddleRight.y = 0;
                 if (paddleRight.y > canvas.height - paddleRight.height) paddleRight.y = canvas.height - paddleRight.height;
             }
@@ -282,7 +382,10 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw center line
+            // 1. Draw Grid
+            drawGrid();
+
+            // 2. Draw Center Line
             ctx.setLineDash([10, 10]);
             ctx.strokeStyle = '#333';
             ctx.beginPath();
@@ -292,6 +395,16 @@
             ctx.setLineDash([]);
 
             if (gameActive) {
+                // 3. Draw Trail
+                ball.trail.forEach((pos, index) => {
+                    const alpha = (index / ball.trail.length) * 0.8;
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, ball.radius * (index / ball.trail.length), 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(0, 255, 255, ${alpha})`;
+                    ctx.fill();
+                });
+
+                // 4. Draw Objects
                 drawRect(paddleLeft.x, paddleLeft.y, paddleLeft.width, paddleLeft.height, paddleLeft.color, paddleLeft.color);
                 drawRect(paddleRight.x, paddleRight.y, paddleRight.width, paddleRight.height, paddleRight.color, paddleRight.color);
                 drawCircle(ball.x, ball.y, ball.radius, ball.color);
