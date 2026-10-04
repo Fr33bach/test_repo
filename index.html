@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthwave Pong</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        #game-container {
+            position: relative;
+            border: 4px solid #ff00ff;
+            box-shadow: 0 0 20px #ff00ff, inset 0 0 20px #ff00ff;
+            background-color: #0a0a0a;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            color: #00ffff;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ffff;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: -50px;
+            color: #ff00ff;
+            text-shadow: 0 0 10px #ff00ff;
+            text-align: center;
+            width: 100%;
+        }
+
+        #menu-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            color: #ff00ff;
+            text-shadow: 0 0 10px #ff00ff;
+        }
+
+        #menu-overlay h1 {
+            font-size: 60px;
+            margin-bottom: 40px;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+        }
+
+        .menu-button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 20px;
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-shadow: 0 0 5px #00ffff;
+            box-shadow: 0 0 10px #00ffff;
+        }
+
+        .menu-button:hover {
+            background: #00ffff;
+            color: #0a0a0a;
+            box-shadow: 0 0 30px #00ffff;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="ui">
+            <div id="score-left">0</div>
+            <div id="score-right">0</div>
+        </div>
+        <canvas id="pongCanvas" width="800" height="500"></canvas>
+        <div id="menu-overlay">
+            <h1>Synthwave Pong</h1>
+            <button class="menu-button" id="btn-2p">2 Player Mode</button>
+            <button class="menu-button" id="btn-ai">Player vs AI Mode</button>
+        </div>
+    </div>
+    <div class="instructions">
+        Left: W/S | Right: Up/Down Arrows
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pongCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreLeftElement = document.getElementById('score-left');
+        const scoreRightElement = document.getElementById('score-right');
+        const menuOverlay = document.getElementById('menu-overlay');
+
+        const btn2P = document.getElementById('btn-2p');
+        const btnAI = document.getElementById('btn-ai');
+
+        let gameActive = false;
+        let gameMode = '2P'; // '2P' or 'AI'
+
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 8,
+            speedX: 5,
+            speedY: 5,
+            color: '#00ffff'
+        };
+
+        const paddleLeft = {
+            x: 10,
+            y: canvas.height / 2 - 50,
+            width: 15,
+            height: 100,
+            score: 0,
+            color: '#ff00ff'
+        };
+
+        const paddleRight = {
+            x: canvas.width - 25,
+            y: canvas.height / 2 - 50,
+            width: 15,
+            height: 100,
+            score: 0,
+            color: '#ff00ff'
+        };
+
+        let upPressed = false;
+        let downPressed = false;
+        let wPressed = false;
+        let sPressed = false;
+
+        btn2P.addEventListener('click', () => {
+            gameMode = '2P';
+            startGame();
+        });
+
+        btnAI.addEventListener('click', () => {
+            gameMode = 'AI';
+            startGame();
+        });
+
+        function startGame() {
+            menuOverlay.style.display = 'none';
+            gameActive = true;
+            paddleLeft.score = 0;
+            paddleRight.score = 0;
+            scoreLeftElement.innerText = '0';
+            scoreRightElement.innerText = '0';
+            resetBall();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp': upPressed = true; break;
+                case 'ArrowDown': downPressed = true; break;
+                case 'w': wPressed = true; break;
+                case 's': sPressed = true; break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'ArrowUp': upPressed = false; break;
+                case 'ArrowDown': downPressed = false; break;
+                case 'w': wPressed = false; break;
+                case 's': sPressed = false; break;
+            }
+        });
+
+        function drawRect(x, y, w, h, color, glow) {
+            ctx.fillStyle = color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = glow;
+            ctx.fillRect(x, y, w, h);
+            ctx.shadowBlur = 0;
+        }
+
+        function drawCircle(x, y, r, color) {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speedX = (Math.random() > 0.5 ? 1 : -1) * 5;
+            ball.speedY = (Math.random() > 0.5 ? 1 : -1) * 5;
+        }
+
+        function update() {
+            if (!gameActive) return;
+
+            ball.x += ball.speedX;
+            ball.y += ball.speedY;
+
+            // Wall collision
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+                ball.speedY = -ball.speedY;
+            }
+
+            // Paddle Left collision
+            if (ball.x - ball.radius < paddleLeft.x + paddleLeft.width &&
+                ball.y > paddleLeft.y && ball.y < paddleLeft.y + paddleLeft.height) {
+                ball.speedX = -ball.speedX;
+                ball.speedX *= 1.05; // Speed up
+            }
+
+            // Paddle Right collision
+            if (ball.x + ball.radius > paddleRight.x &&
+                ball.y > paddleRight.y && ball.y < paddleRight.y + paddleRight.height) {
+                ball.speedX = -ball.speedX;
+                ball.speedX *= 1.05; // Speed up
+            }
+
+            // Score
+            if (ball.x < 0) {
+                paddleRight.score++;
+                scoreRightElement.innerText = paddleRight.score;
+                resetBall();
+            } else if (ball.x > canvas.width) {
+                paddleLeft.score++;
+                scoreLeftElement.innerText = paddleLeft.score;
+                resetBall();
+            }
+
+            // Movement
+            if (wPressed && paddleLeft.y > 0) paddleLeft.y -= 7;
+            if (sPressed && paddleLeft.y < canvas.height - paddleLeft.height) paddleLeft.y += 7;
+
+            if (gameMode === '2P') {
+                if (upPressed && paddleRight.y > 0) paddleRight.y -= 7;
+                if (downPressed && paddleRight.y < canvas.height - paddleRight.height) paddleRight.y += 7;
+            } else {
+                // AI Movement
+                const aiSpeed = 5;
+                const paddleCenter = paddleRight.y + paddleRight.height / 2;
+
+                // The AI follows the ball's Y position with a bit of "slack"
+                if (paddleCenter < ball.y - 10) {
+                    paddleRight.y += aiSpeed;
+                } else if (paddleCenter > ball.y + 10) {
+                    paddleRight.y -= aiSpeed;
+                }
+
+                // Boundary check for AI
+                if (paddleRight.y < 0) paddleRight.y = 0;
+                if (paddleRight.y > canvas.height - paddleRight.height) paddleRight.y = canvas.height - paddleRight.height;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw center line
+            ctx.setLineDash([10, 10]);
+            ctx.strokeStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (gameActive) {
+                drawRect(paddleLeft.x, paddleLeft.y, paddleLeft.width, paddleLeft.height, paddleLeft.color, paddleLeft.color);
+                drawRect(paddleRight.x, paddleRight.y, paddleRight.width, paddleRight.height, paddleRight.color, paddleRight.color);
+                drawCircle(ball.x, ball.y, ball.radius, ball.color);
+            }
+
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
