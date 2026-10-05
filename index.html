@@ -144,6 +144,7 @@
         const btnAI = document.getElementById('btn-ai');
 
         let gameActive = false;
+        let isGameOver = false;
         let gameMode = '2P';
 
         // Web Audio API setup
@@ -312,7 +313,7 @@
         }
 
         function update() {
-            if (!gameActive) return;
+            if (!gameActive || isGameOver) return;
 
             ball.x += ball.speedX;
             ball.y += ball.speedY;
@@ -354,6 +355,16 @@
                 paddleLeft.score++;
                 scoreLeftElement.innerText = paddleLeft.score;
                 resetBall();
+            }
+
+            // Win Condition
+            if (paddleLeft.score >= 20 || paddleRight.score >= 20) {
+                isGameOver = true;
+                setTimeout(() => {
+                    isGameOver = false;
+                    gameActive = false;
+                    menuOverlay.style.display = 'flex';
+                }, 3000);
             }
 
             // Movement
@@ -408,6 +419,17 @@
                 drawRect(paddleLeft.x, paddleLeft.y, paddleLeft.width, paddleLeft.height, paddleLeft.color, paddleLeft.color);
                 drawRect(paddleRight.x, paddleRight.y, paddleRight.width, paddleRight.height, paddleRight.color, paddleRight.color);
                 drawCircle(ball.x, ball.y, ball.radius, ball.color);
+            }
+            if (isGameOver) {
+                ctx.fillStyle = '#ff00ff';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ff00ff';
+                ctx.font = 'bold 60px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                let winnerText = paddleLeft.score >= 20 ? 'Player 1 Wins!' : 'Player 2 / AI Wins!';
+                ctx.fillText(winnerText, canvas.width / 2, canvas.height / 2);
+                ctx.shadowBlur = 0;
             }
 
             update();
